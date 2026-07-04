@@ -1,0 +1,13 @@
+.env
+.venv/
+venv/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.DS_Store
+*.db
+logs/
+target/
+dbt/air_risk/logs/
+dbt/air_risk/target/
+dbt/air_risk/profiles.yml

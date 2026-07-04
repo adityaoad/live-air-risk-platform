@@ -1,0 +1,77 @@
+version: 2
+
+models:
+  - name: stg_cities
+    columns:
+      - name: city_id
+        tests:
+          - not_null
+          - unique
+      - name: city_name
+        tests:
+          - not_null
+      - name: country
+        tests:
+          - not_null
+
+  - name: stg_weather_hourly
+    columns:
+      - name: city_id
+        tests:
+          - not_null
+      - name: observation_time
+        tests:
+          - not_null
+
+  - name: stg_air_quality_hourly
+    columns:
+      - name: city_id
+        tests:
+          - not_null
+      - name: observation_time
+        tests:
+          - not_null
+
+  - name: mart_city_hourly_risk
+    columns:
+      - name: city_id
+        tests:
+          - not_null
+      - name: observation_time
+        tests:
+          - not_null
+
+  - name: mart_latest_city_risk
+    columns:
+      - name: city_id
+        tests:
+          - not_null
+          - unique
+      - name: observation_time
+        tests:
+          - not_null
+
+  - name: mart_bi_city_risk_summary
+    columns:
+      - name: city_id
+        tests:
+          - not_null
+          - unique
+      - name: city_name
+        tests:
+          - not_null
+      - name: latest_observation_time
+        tests:
+          - not_null
+
+  - name: mart_bi_hourly_city_trends
+    columns:
+      - name: city_id
+        tests:
+          - not_null
+      - name: observation_time
+        tests:
+          - not_null
+      - name: city_name
+        tests:
+          - not_null

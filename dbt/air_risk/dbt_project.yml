@@ -1,0 +1,21 @@
+name: 'air_risk'
+version: '1.0.0'
+config-version: 2
+
+profile: 'air_risk'
+
+model-paths: ['models']
+
+target-path: 'target'
+clean-targets:
+  - 'target'
+  - 'dbt_packages'
+
+models:
+  air_risk:
+    staging:
+      +materialized: view
+    intermediate:
+      +materialized: view
+    marts:
+      +materialized: table

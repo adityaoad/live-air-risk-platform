@@ -1,0 +1,26 @@
+SELECT
+    city_id,
+    city_name,
+    state_region,
+    country,
+    observation_time,
+    DATE(observation_time) AS observation_date,
+    EXTRACT(HOUR FROM observation_time) AS observation_hour,
+    us_aqi,
+    aqi_category,
+    pm2_5,
+    pm10,
+    ozone,
+    carbon_monoxide,
+    nitrogen_dioxide,
+    sulphur_dioxide,
+    apparent_temperature,
+    relative_humidity_2m,
+    precipitation,
+    wind_speed_10m,
+    wind_gusts_10m,
+    uv_index,
+    environmental_risk_score,
+    risk_label
+FROM {{ ref('mart_city_hourly_risk') }}
+WHERE observation_time IS NOT NULL

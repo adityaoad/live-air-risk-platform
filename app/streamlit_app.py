@@ -1,0 +1,252 @@
+import os
+
+import pandas as pd
+import plotly.express as px
+import psycopg2
+import streamlit as st
+from dotenv import load_dotenv
+
+
+load_dotenv(".env")
+
+
+def get_connection():
+    database_url = os.getenv("DATABASE_URL")
+
+    if not database_url:
+        raise ValueError("DATABASE_URL missing from .env")
+
+    return psycopg2.connect(database_url)
+
+
+def to_mountain_time(series):
+    return (
+        pd.to_datetime(series, utc=True)
+        .dt.tz_convert("America/Denver")
+        .dt.strftime("%Y-%m-%d %H:%M MT")
+    )
+
+
+@st.cache_data(ttl=300)
+def load_latest_risk():
+    query = """
+        SELECT
+            city_name,
+            state_region,
+            country,
+            observation_time,
+            us_aqi,
+            pm2_5,
+            pm10,
+            ozone,
+            apparent_temperature,
+            wind_speed_10m,
+            uv_index,
+            environmental_risk_score,
+            risk_label,
+            aqi_category,
+            latest_ingested_at
+        FROM analytics.mart_latest_city_risk
+        ORDER BY environmental_risk_score DESC NULLS LAST;
+    """
+
+    with get_connection() as conn:
+        return pd.read_sql(query, conn)
+
+
+@st.cache_data(ttl=300)
+def load_hourly_risk():
+    query = """
+        SELECT
+            city_name,
+            state_region,
+            country,
+            observation_time,
+            us_aqi,
+            pm2_5,
+            pm10,
+            ozone,
+            apparent_temperature,
+            wind_speed_10m,
+            uv_index,
+            environmental_risk_score,
+            risk_label,
+            aqi_category
+        FROM analytics.mart_city_hourly_risk
+        WHERE observation_time IS NOT NULL
+        ORDER BY observation_time;
+    """
+
+    with get_connection() as conn:
+        return pd.read_sql(query, conn)
+
+
+@st.cache_data(ttl=300)
+def load_data_quality():
+    query = """
+        SELECT
+            table_name,
+            row_count,
+            earliest_observation_time,
+            latest_observation_time,
+            latest_ingested_at,
+            missing_observation_time_count
+        FROM analytics.mart_data_quality_summary
+        ORDER BY table_name;
+    """
+
+    with get_connection() as conn:
+        return pd.read_sql(query, conn)
+
+
+st.set_page_config(
+    page_title="Live Air Quality & Weather Risk Platform",
+    layout="wide",
+)
+
+st.title("Live Air Quality & Weather Risk Platform")
+st.caption("MVP dashboard using live Open-Meteo weather and air-quality data.")
+
+latest_df = load_latest_risk()
+hourly_df = load_hourly_risk()
+dq_df = load_data_quality()
+
+if latest_df.empty:
+    st.error("No latest risk data found. Run dbt models first.")
+    st.stop()
+
+latest_df["observation_time"] = pd.to_datetime(latest_df["observation_time"])
+latest_df["latest_ingested_at"] = pd.to_datetime(latest_df["latest_ingested_at"])
+hourly_df["observation_time"] = pd.to_datetime(hourly_df["observation_time"])
+
+if not dq_df.empty:
+    dq_df["earliest_observation_time"] = pd.to_datetime(dq_df["earliest_observation_time"])
+    dq_df["latest_observation_time"] = pd.to_datetime(dq_df["latest_observation_time"])
+    dq_df["latest_ingested_at"] = pd.to_datetime(dq_df["latest_ingested_at"])
+
+col1, col2, col3, col4 = st.columns(4)
+
+col1.metric("Cities Tracked", latest_df["city_name"].nunique())
+col2.metric("Highest AQI", int(latest_df["us_aqi"].max()))
+col3.metric("Highest Risk Score", round(latest_df["environmental_risk_score"].max(), 1))
+latest_refresh_mt = (
+    pd.to_datetime(latest_df["latest_ingested_at"].max(), utc=True)
+    .tz_convert("America/Denver")
+    .strftime("%Y-%m-%d %H:%M MT")
+)
+
+col4.metric("Latest Refresh", latest_refresh_mt)
+
+tab_overview, tab_city, tab_quality = st.tabs(["Overview", "City Explorer", "Data Quality"])
+
+with tab_overview:
+    st.subheader("Latest City Risk Ranking")
+
+    ranking_cols = [
+        "city_name",
+        "state_region",
+        "country",
+        "observation_time",
+        "us_aqi",
+        "aqi_category",
+        "environmental_risk_score",
+        "risk_label",
+        "pm2_5",
+        "pm10",
+        "ozone",
+        "apparent_temperature",
+        "wind_speed_10m",
+        "uv_index",
+    ]
+
+    ranking_df = latest_df[ranking_cols].copy()
+    ranking_df["observation_time"] = to_mountain_time(ranking_df["observation_time"])
+
+    st.dataframe(
+        ranking_df,
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    st.subheader("Risk Score by City")
+
+    fig_risk = px.bar(
+        latest_df,
+        x="city_name",
+        y="environmental_risk_score",
+        color="risk_label",
+        hover_data=["us_aqi", "aqi_category", "pm2_5", "ozone"],
+        title="Latest Environmental Risk Score",
+    )
+
+    st.plotly_chart(fig_risk, use_container_width=True)
+
+with tab_city:
+    st.subheader("City Explorer")
+
+    city = st.selectbox(
+        "Select city",
+        sorted(hourly_df["city_name"].dropna().unique()),
+    )
+
+    city_df = hourly_df[hourly_df["city_name"] == city].copy()
+
+    fig_aqi = px.line(
+        city_df,
+        x="observation_time",
+        y="us_aqi",
+        title=f"{city} AQI Trend",
+        markers=True,
+    )
+
+    st.plotly_chart(fig_aqi, use_container_width=True)
+
+    fig_pollutants = px.line(
+        city_df,
+        x="observation_time",
+        y=["pm2_5", "pm10", "ozone"],
+        title=f"{city} Pollutant Trends",
+    )
+
+    st.plotly_chart(fig_pollutants, use_container_width=True)
+
+    fig_weather = px.line(
+        city_df,
+        x="observation_time",
+        y=["apparent_temperature", "wind_speed_10m", "uv_index"],
+        title=f"{city} Weather Context",
+    )
+
+    st.plotly_chart(fig_weather, use_container_width=True)
+
+with tab_quality:
+    st.subheader("Data Quality Summary")
+
+    dq_display_df = dq_df.copy()
+
+    for col in [
+        "earliest_observation_time",
+        "latest_observation_time",
+        "latest_ingested_at",
+    ]:
+        dq_display_df[col] = to_mountain_time(dq_display_df[col])
+
+    st.dataframe(
+        dq_display_df,
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    if not dq_df.empty:
+        fig_rows = px.bar(
+            dq_df,
+            x="table_name",
+            y="row_count",
+            title="Row Counts by Table",
+        )
+
+        st.plotly_chart(fig_rows, use_container_width=True)
+
+st.caption(
+    "Risk score is a portfolio-project indicator, not official health or medical guidance."
+)

@@ -1,0 +1,13 @@
+air_risk:
+  target: dev
+  outputs:
+    dev:
+      type: postgres
+      host: YOUR_NEON_HOST
+      user: YOUR_NEON_USER
+      password: YOUR_NEON_PASSWORD
+      port: 5432
+      dbname: YOUR_DATABASE_NAME
+      schema: analytics
+      threads: 4
+      sslmode: require

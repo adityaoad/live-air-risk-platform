@@ -1,0 +1,21 @@
+SELECT
+    city_id,
+    city_name,
+    state_region,
+    country,
+    latitude,
+    longitude,
+    timezone,
+    observation_time AS latest_observation_time,
+    us_aqi,
+    aqi_category,
+    pm2_5,
+    pm10,
+    ozone,
+    apparent_temperature,
+    wind_speed_10m,
+    uv_index,
+    environmental_risk_score,
+    risk_label,
+    latest_ingested_at
+FROM {{ ref('mart_latest_city_risk') }}
