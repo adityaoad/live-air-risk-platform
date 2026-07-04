@@ -11,3 +11,4 @@ target/
 dbt/air_risk/logs/
 dbt/air_risk/target/
 dbt/air_risk/profiles.yml
+.streamlit/secrets.toml
