@@ -72,7 +72,7 @@ Create a .env file:
 
 Add your Neon connection string:
 
-    DATABASE_URL=postgresql://username:password@host.neon.tech/database?sslmode=require
+    DATABASE_URL=your_neon_postgres_connection_string
 
 ## Run Database Setup
 
