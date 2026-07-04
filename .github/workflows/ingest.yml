@@ -1,0 +1,70 @@
+name: Ingest environmental data
+
+on:
+  schedule:
+    - cron: '0 */3 * * *'
+  workflow_dispatch:
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run database setup
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: python db/setup_db.py
+
+      - name: Run ingestion pipeline
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          OPEN_METEO_WEATHER_URL: https://api.open-meteo.com/v1/forecast
+          OPEN_METEO_AIR_QUALITY_URL: https://air-quality-api.open-meteo.com/v1/air-quality
+        run: python -m ingestion.run_pipeline
+
+      - name: Run dbt models
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          python - <<'PY'
+          import os
+          from urllib.parse import urlparse, unquote
+
+          database_url = os.getenv("DATABASE_URL")
+          parsed = urlparse(database_url)
+
+          profile = f"""air_risk:
+            target: dev
+            outputs:
+              dev:
+                type: postgres
+                host: {parsed.hostname}
+                user: {unquote(parsed.username)}
+                password: {unquote(parsed.password)}
+                port: {parsed.port or 5432}
+                dbname: {parsed.path.lstrip("/")}
+                schema: analytics
+                threads: 4
+                sslmode: require
+          """
+
+          with open("dbt/air_risk/profiles.yml", "w") as f:
+              f.write(profile)
+          PY
+
+          cd dbt/air_risk
+          dbt run --profiles-dir .
+          dbt test --profiles-dir .
