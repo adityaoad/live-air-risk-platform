@@ -1,10 +1,9 @@
 import os
 
 import psycopg2
-import requests
 from psycopg2.extras import Json, execute_batch
 
-from ingestion.utils import get_active_cities, load_database_url, parse_time
+from ingestion.utils import get_active_cities, load_database_url, parse_time, fetch_json_with_retries
 
 
 AQ_HOURLY = [
@@ -33,10 +32,13 @@ def fetch_air_quality(city):
         "timezone": "auto",
     }
 
-    response = requests.get(base_url, params=params, timeout=30)
-    response.raise_for_status()
-
-    return response.url, response.status_code, response.json()
+    return fetch_json_with_retries(
+        base_url,
+        params=params,
+        timeout=60,
+        retries=3,
+        backoff_seconds=10,
+    )
 
 
 def log_api_request(conn, city_id, request_url, status_code, payload):

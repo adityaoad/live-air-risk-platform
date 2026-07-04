@@ -1,7 +1,9 @@
 import os
+import time
 from datetime import datetime
 from typing import Any, Dict, List
 
+import requests
 from dotenv import load_dotenv
 
 
@@ -47,3 +49,24 @@ def parse_time(value: str):
         return None
 
     return datetime.fromisoformat(value.replace("Z", "+00:00")).replace(tzinfo=None)
+
+
+def fetch_json_with_retries(url, params, timeout=60, retries=3, backoff_seconds=10):
+    last_error = None
+
+    for attempt in range(1, retries + 1):
+        try:
+            response = requests.get(url, params=params, timeout=timeout)
+            response.raise_for_status()
+            return response.url, response.status_code, response.json()
+
+        except requests.exceptions.RequestException as error:
+            last_error = error
+            print(f"API request failed on attempt {attempt}/{retries}: {error}")
+
+            if attempt < retries:
+                sleep_seconds = backoff_seconds * attempt
+                print(f"Retrying in {sleep_seconds} seconds...")
+                time.sleep(sleep_seconds)
+
+    raise last_error
