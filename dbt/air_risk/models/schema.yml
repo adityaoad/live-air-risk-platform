@@ -90,3 +90,15 @@ models:
       - name: is_aqi_anomaly
         tests:
           - not_null
+
+  - name: mart_aqi_forecast_baseline
+    columns:
+      - name: city_id
+        tests:
+          - not_null
+      - name: observation_time
+        tests:
+          - not_null
+      - name: us_aqi
+        tests:
+          - not_null

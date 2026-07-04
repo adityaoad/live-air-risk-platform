@@ -84,6 +84,32 @@ def load_hourly_risk():
 
 
 @st.cache_data(ttl=300)
+def load_forecast():
+    query = """
+        SELECT
+            city_name,
+            state_region,
+            country,
+            observation_time,
+            us_aqi,
+            forecast_aqi_baseline,
+            forecast_absolute_error,
+            forecast_aqi_category,
+            pm2_5,
+            pm10,
+            ozone,
+            environmental_risk_score,
+            risk_label
+        FROM analytics.mart_aqi_forecast_baseline
+        WHERE forecast_aqi_baseline IS NOT NULL
+        ORDER BY observation_time;
+    """
+
+    with get_connection() as conn:
+        return pd.read_sql(query, conn)
+
+
+@st.cache_data(ttl=300)
 def load_anomalies():
     query = """
         SELECT
@@ -138,6 +164,7 @@ st.caption("MVP dashboard using live Open-Meteo weather and air-quality data.")
 
 latest_df = load_latest_risk()
 hourly_df = load_hourly_risk()
+forecast_df = load_forecast()
 anomaly_df = load_anomalies()
 dq_df = load_data_quality()
 
@@ -148,6 +175,9 @@ if latest_df.empty:
 latest_df["observation_time"] = pd.to_datetime(latest_df["observation_time"])
 latest_df["latest_ingested_at"] = pd.to_datetime(latest_df["latest_ingested_at"])
 hourly_df["observation_time"] = pd.to_datetime(hourly_df["observation_time"])
+
+if not forecast_df.empty:
+    forecast_df["observation_time"] = pd.to_datetime(forecast_df["observation_time"])
 
 if not anomaly_df.empty:
     anomaly_df["observation_time"] = pd.to_datetime(anomaly_df["observation_time"])
@@ -170,7 +200,7 @@ latest_refresh_mt = (
 
 col4.metric("Latest Refresh", latest_refresh_mt)
 
-tab_overview, tab_city, tab_anomalies, tab_quality = st.tabs(["Overview", "City Explorer", "Anomalies", "Data Quality"])
+tab_overview, tab_city, tab_anomalies, tab_forecast, tab_quality = st.tabs(["Overview", "City Explorer", "Anomalies", "Forecast", "Data Quality"])
 
 with tab_overview:
     st.subheader("Latest City Risk Ranking")
@@ -309,6 +339,61 @@ with tab_anomalies:
         )
 
         st.plotly_chart(fig_anomalies, use_container_width=True)
+
+
+
+with tab_forecast:
+    st.subheader("AQI Forecast Baseline")
+
+    if forecast_df.empty:
+        st.info("No forecast baseline data available yet.")
+    else:
+        avg_error = round(forecast_df["forecast_absolute_error"].mean(), 2)
+        forecasted_rows = len(forecast_df)
+
+        col_f1, col_f2 = st.columns(2)
+        col_f1.metric("Forecasted Rows", forecasted_rows)
+        col_f2.metric("Avg Absolute Error", avg_error)
+
+        forecast_city = st.selectbox(
+            "Select forecast city",
+            sorted(forecast_df["city_name"].dropna().unique()),
+            key="forecast_city_select",
+        )
+
+        forecast_city_df = forecast_df[forecast_df["city_name"] == forecast_city].copy()
+
+        fig_forecast = px.line(
+            forecast_city_df,
+            x="observation_time",
+            y=["us_aqi", "forecast_aqi_baseline"],
+            title=f"{forecast_city} AQI: Actual vs Baseline Forecast",
+            markers=True,
+        )
+
+        st.plotly_chart(fig_forecast, use_container_width=True)
+
+        forecast_display_df = forecast_city_df.sort_values("observation_time", ascending=False).copy()
+        forecast_display_df["observation_time"] = to_mountain_time(forecast_display_df["observation_time"])
+
+        st.dataframe(
+            forecast_display_df[
+                [
+                    "city_name",
+                    "state_region",
+                    "country",
+                    "observation_time",
+                    "us_aqi",
+                    "forecast_aqi_baseline",
+                    "forecast_absolute_error",
+                    "forecast_aqi_category",
+                    "environmental_risk_score",
+                    "risk_label",
+                ]
+            ],
+            use_container_width=True,
+            hide_index=True,
+        )
 
 
 with tab_quality:
