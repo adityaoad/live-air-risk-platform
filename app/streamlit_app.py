@@ -10,13 +10,20 @@ from dotenv import load_dotenv
 load_dotenv(".env")
 
 
-def get_connection():
+def get_database_url():
     database_url = os.getenv("DATABASE_URL")
 
     if not database_url:
-        raise ValueError("DATABASE_URL missing from .env")
+        database_url = st.secrets.get("DATABASE_URL", None)
 
-    return psycopg2.connect(database_url)
+    if not database_url:
+        raise ValueError("DATABASE_URL missing from environment or Streamlit secrets")
+
+    return database_url
+
+
+def get_connection():
+    return psycopg2.connect(get_database_url())
 
 
 def to_mountain_time(series):
@@ -240,13 +247,80 @@ with tab_overview:
 
     st.subheader("Risk Score by City")
 
+    risk_order = ["Low", "Moderate", "High", "Severe"]
+
+    latest_df["risk_label"] = pd.Categorical(
+        latest_df["risk_label"],
+        categories=risk_order,
+        ordered=True,
+    )
+
+    sort_choice = st.selectbox(
+        "Sort city risk chart",
+        ["Highest risk first", "Lowest risk first"],
+        key="risk_chart_sort",
+    )
+
+    sort_ascending = sort_choice == "Lowest risk first"
+
+    risk_chart_df = latest_df.sort_values(
+        "environmental_risk_score",
+        ascending=sort_ascending,
+    ).copy()
+
     fig_risk = px.bar(
-        latest_df,
+        risk_chart_df,
         x="city_name",
         y="environmental_risk_score",
         color="risk_label",
-        hover_data=["us_aqi", "aqi_category", "pm2_5", "ozone"],
+        color_discrete_map={
+            "Low": "#2E8B57",
+            "Moderate": "#F4B400",
+            "High": "#F57C00",
+            "Severe": "#D32F2F",
+        },
+        category_orders={
+            "city_name": risk_chart_df["city_name"].tolist(),
+            "risk_label": risk_order,
+        },
+        hover_data={
+            "city_name": False,
+            "environmental_risk_score": ":.1f",
+            "risk_label": True,
+            "us_aqi": ":.0f",
+            "aqi_category": True,
+            "pm2_5": ":.1f",
+            "ozone": ":.1f",
+        },
         title="Latest Environmental Risk Score",
+    )
+
+    fig_risk.add_hline(
+        y=25,
+        line_dash="dot",
+        annotation_text="Moderate threshold",
+        annotation_position="top left",
+    )
+
+    fig_risk.add_hline(
+        y=50,
+        line_dash="dot",
+        annotation_text="High threshold",
+        annotation_position="top left",
+    )
+
+    fig_risk.add_hline(
+        y=75,
+        line_dash="dot",
+        annotation_text="Severe threshold",
+        annotation_position="top left",
+    )
+
+    fig_risk.update_layout(
+        legend_title_text="Risk Label",
+        xaxis_title="City",
+        yaxis_title="Environmental Risk Score",
+        yaxis_range=[0, 100],
     )
 
     st.plotly_chart(fig_risk, use_container_width=True)
@@ -425,5 +499,5 @@ with tab_quality:
         st.plotly_chart(fig_rows, use_container_width=True)
 
 st.caption(
-    "Risk score is a portfolio-project indicator, not official health or medical guidance."
+    "Risk score is an analytical indicator, not official health or medical guidance."
 )
