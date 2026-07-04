@@ -70,6 +70,8 @@ scored AS (
 
 SELECT
     *,
+    apparent_temperature AS apparent_temperature_c,
+    ROUND(((apparent_temperature * 9 / 5) + 32), 1) AS apparent_temperature_f,
 
     CASE
         WHEN environmental_risk_score IS NULL THEN NULL

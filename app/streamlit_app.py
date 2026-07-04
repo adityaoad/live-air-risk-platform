@@ -39,7 +39,8 @@ def load_latest_risk():
             pm2_5,
             pm10,
             ozone,
-            apparent_temperature,
+            apparent_temperature_c,
+            apparent_temperature_f,
             wind_speed_10m,
             uv_index,
             environmental_risk_score,
@@ -66,7 +67,8 @@ def load_hourly_risk():
             pm2_5,
             pm10,
             ozone,
-            apparent_temperature,
+            apparent_temperature_c,
+            apparent_temperature_f,
             wind_speed_10m,
             uv_index,
             environmental_risk_score,
@@ -75,6 +77,33 @@ def load_hourly_risk():
         FROM analytics.mart_city_hourly_risk
         WHERE observation_time IS NOT NULL
         ORDER BY observation_time;
+    """
+
+    with get_connection() as conn:
+        return pd.read_sql(query, conn)
+
+
+@st.cache_data(ttl=300)
+def load_anomalies():
+    query = """
+        SELECT
+            city_name,
+            state_region,
+            country,
+            observation_time,
+            us_aqi,
+            pm2_5,
+            pm10,
+            ozone,
+            environmental_risk_score,
+            risk_label,
+            rolling_avg_aqi_24h,
+            rolling_std_aqi_24h,
+            aqi_z_score,
+            is_aqi_anomaly
+        FROM analytics.mart_aqi_anomalies
+        WHERE aqi_z_score IS NOT NULL
+        ORDER BY observation_time DESC;
     """
 
     with get_connection() as conn:
@@ -109,6 +138,7 @@ st.caption("MVP dashboard using live Open-Meteo weather and air-quality data.")
 
 latest_df = load_latest_risk()
 hourly_df = load_hourly_risk()
+anomaly_df = load_anomalies()
 dq_df = load_data_quality()
 
 if latest_df.empty:
@@ -118,6 +148,9 @@ if latest_df.empty:
 latest_df["observation_time"] = pd.to_datetime(latest_df["observation_time"])
 latest_df["latest_ingested_at"] = pd.to_datetime(latest_df["latest_ingested_at"])
 hourly_df["observation_time"] = pd.to_datetime(hourly_df["observation_time"])
+
+if not anomaly_df.empty:
+    anomaly_df["observation_time"] = pd.to_datetime(anomaly_df["observation_time"])
 
 if not dq_df.empty:
     dq_df["earliest_observation_time"] = pd.to_datetime(dq_df["earliest_observation_time"])
@@ -137,7 +170,7 @@ latest_refresh_mt = (
 
 col4.metric("Latest Refresh", latest_refresh_mt)
 
-tab_overview, tab_city, tab_quality = st.tabs(["Overview", "City Explorer", "Data Quality"])
+tab_overview, tab_city, tab_anomalies, tab_quality = st.tabs(["Overview", "City Explorer", "Anomalies", "Data Quality"])
 
 with tab_overview:
     st.subheader("Latest City Risk Ranking")
@@ -154,13 +187,20 @@ with tab_overview:
         "pm2_5",
         "pm10",
         "ozone",
-        "apparent_temperature",
+        "apparent_temperature_c",
+        "apparent_temperature_f",
         "wind_speed_10m",
         "uv_index",
     ]
 
     ranking_df = latest_df[ranking_cols].copy()
     ranking_df["observation_time"] = to_mountain_time(ranking_df["observation_time"])
+    ranking_df = ranking_df.rename(
+        columns={
+            "apparent_temperature_c": "Apparent Temperature (°C)",
+            "apparent_temperature_f": "Apparent Temperature (°F)",
+        }
+    )
 
     st.dataframe(
         ranking_df,
@@ -213,11 +253,63 @@ with tab_city:
     fig_weather = px.line(
         city_df,
         x="observation_time",
-        y=["apparent_temperature", "wind_speed_10m", "uv_index"],
-        title=f"{city} Weather Context",
+        y=["apparent_temperature_c",
+        "apparent_temperature_f", "wind_speed_10m", "uv_index"],
+        title=f"{city} Weather Context: Apparent Temperature (°C/°F), Wind, UV",
     )
 
     st.plotly_chart(fig_weather, use_container_width=True)
+
+
+with tab_anomalies:
+    st.subheader("AQI Anomalies")
+
+    anomaly_count = int(anomaly_df["is_aqi_anomaly"].sum()) if not anomaly_df.empty else 0
+    scored_count = len(anomaly_df)
+
+    col_a, col_b = st.columns(2)
+    col_a.metric("Scored Rows", scored_count)
+    col_b.metric("Anomaly Rows", anomaly_count)
+
+    anomaly_display_df = anomaly_df[anomaly_df["is_aqi_anomaly"] == True].copy()
+
+    if anomaly_display_df.empty:
+        st.info("No AQI anomalies detected with the current threshold.")
+    else:
+        anomaly_display_df["observation_time"] = to_mountain_time(anomaly_display_df["observation_time"])
+
+        st.dataframe(
+            anomaly_display_df[
+                [
+                    "city_name",
+                    "state_region",
+                    "country",
+                    "observation_time",
+                    "us_aqi",
+                    "rolling_avg_aqi_24h",
+                    "aqi_z_score",
+                    "environmental_risk_score",
+                    "risk_label",
+                    "pm2_5",
+                    "pm10",
+                    "ozone",
+                ]
+            ],
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        fig_anomalies = px.scatter(
+            anomaly_df,
+            x="observation_time",
+            y="us_aqi",
+            color="is_aqi_anomaly",
+            hover_data=["city_name", "aqi_z_score", "environmental_risk_score"],
+            title="AQI Anomaly Detection",
+        )
+
+        st.plotly_chart(fig_anomalies, use_container_width=True)
+
 
 with tab_quality:
     st.subheader("Data Quality Summary")
