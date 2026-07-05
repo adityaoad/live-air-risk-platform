@@ -58,3 +58,21 @@ CREATE TABLE IF NOT EXISTS raw.open_meteo_air_quality_hourly (
     ingested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (city_id, observation_time, source)
 );
+
+CREATE TABLE IF NOT EXISTS raw.noaa_weather_alerts (
+    alert_id TEXT PRIMARY KEY,
+    city_id INTEGER REFERENCES analytics.cities(city_id),
+    event TEXT,
+    headline TEXT,
+    severity TEXT,
+    urgency TEXT,
+    certainty TEXT,
+    status TEXT,
+    effective_at TIMESTAMP,
+    expires_at TIMESTAMP,
+    area_desc TEXT,
+    instruction TEXT,
+    response_json JSONB,
+    source TEXT DEFAULT 'noaa_nws_alerts',
+    ingested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);

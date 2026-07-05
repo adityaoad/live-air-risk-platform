@@ -1,0 +1,31 @@
+version: 2
+
+models:
+  - name: mart_city_weather_alerts
+    description: "City-level active NOAA/NWS weather alert summary for US cities, with zero-alert rows preserved for all active cities."
+    columns:
+      - name: city_id
+        description: "Unique city identifier."
+        tests:
+          - not_null
+          - unique
+
+      - name: city_name
+        description: "City name."
+        tests:
+          - not_null
+
+      - name: active_alert_count
+        description: "Number of currently active NOAA/NWS weather alerts for the city."
+        tests:
+          - not_null
+
+      - name: highest_alert_severity
+        description: "Highest active alert severity for the city. Returns None when no alert is active."
+        tests:
+          - not_null
+
+      - name: has_active_alert
+        description: "Boolean flag showing whether the city has at least one active weather alert."
+        tests:
+          - not_null

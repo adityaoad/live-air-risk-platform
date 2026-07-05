@@ -501,3 +501,101 @@ with tab_quality:
 st.caption(
     "Risk score is an analytical indicator, not official health or medical guidance."
 )
+
+
+# -----------------------------
+# NOAA Weather Alerts Section
+# -----------------------------
+
+import os as _os
+import pandas as _pd
+import psycopg2 as _psycopg2
+import streamlit as _st
+
+
+def _get_alert_database_url():
+    try:
+        return _st.secrets["DATABASE_URL"]
+    except Exception:
+        return _os.getenv("DATABASE_URL")
+
+
+def _load_weather_alerts():
+    database_url = _get_alert_database_url()
+
+    if not database_url:
+        return _pd.DataFrame()
+
+    query = """
+        SELECT
+            city_name,
+            state_region,
+            country,
+            active_alert_count,
+            highest_alert_severity,
+            latest_alert_event,
+            latest_alert_headline,
+            latest_alert_urgency,
+            latest_alert_certainty,
+            latest_alert_expires_at,
+            has_active_alert
+        FROM analytics.mart_city_weather_alerts
+        ORDER BY
+            active_alert_count DESC,
+            CASE highest_alert_severity
+                WHEN 'Extreme' THEN 5
+                WHEN 'Severe' THEN 4
+                WHEN 'Moderate' THEN 3
+                WHEN 'Minor' THEN 2
+                WHEN 'Unknown' THEN 1
+                ELSE 0
+            END DESC,
+            city_name;
+    """
+
+    with _psycopg2.connect(database_url) as conn:
+        return _pd.read_sql(query, conn)
+
+
+_st.divider()
+_st.subheader("NOAA/NWS Weather Alerts")
+
+try:
+    alerts_df = _load_weather_alerts()
+
+    if alerts_df.empty:
+        _st.info("No NOAA/NWS weather alert data is available yet.")
+    else:
+        active_alerts = int(alerts_df["active_alert_count"].sum())
+        cities_with_alerts = int(alerts_df["has_active_alert"].sum())
+
+        col1, col2 = _st.columns(2)
+        col1.metric("Active Weather Alerts", active_alerts)
+        col2.metric("Cities With Alerts", cities_with_alerts)
+
+        active_df = alerts_df[alerts_df["has_active_alert"] == True]
+
+        if active_df.empty:
+            _st.success("No active NOAA/NWS weather alerts for tracked US cities.")
+        else:
+            _st.dataframe(
+                active_df[
+                    [
+                        "city_name",
+                        "state_region",
+                        "active_alert_count",
+                        "highest_alert_severity",
+                        "latest_alert_event",
+                        "latest_alert_headline",
+                        "latest_alert_expires_at",
+                    ]
+                ],
+                use_container_width=True,
+                hide_index=True,
+            )
+
+        with _st.expander("All tracked cities"):
+            _st.dataframe(alerts_df, use_container_width=True, hide_index=True)
+
+except Exception as error:
+    _st.warning(f"Could not load NOAA/NWS weather alerts: {error}")
