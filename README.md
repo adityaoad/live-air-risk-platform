@@ -2,6 +2,10 @@
 
 An end-to-end live data platform that ingests weather and air-quality data, stores raw and modeled data in PostgreSQL, calculates city-level environmental risk, and serves a dashboard in Streamlit.
 
+## Live App
+
+Streamlit app: https://live-air-risk-platform-937cvdm2bh5sfqcaejhnoq.streamlit.app/
+
 ## Current MVP Status
 
 Working:
