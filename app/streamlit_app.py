@@ -161,6 +161,39 @@ def load_data_quality():
         return pd.read_sql(query, conn)
 
 
+@st.cache_data(ttl=300)
+def load_weather_alerts():
+    query = """
+        SELECT
+            city_name,
+            state_region,
+            country,
+            active_alert_count,
+            highest_alert_severity,
+            latest_alert_event,
+            latest_alert_headline,
+            latest_alert_urgency,
+            latest_alert_certainty,
+            latest_alert_expires_at,
+            has_active_alert
+        FROM analytics.mart_city_weather_alerts
+        ORDER BY
+            active_alert_count DESC,
+            CASE highest_alert_severity
+                WHEN 'Extreme' THEN 5
+                WHEN 'Severe' THEN 4
+                WHEN 'Moderate' THEN 3
+                WHEN 'Minor' THEN 2
+                WHEN 'Unknown' THEN 1
+                ELSE 0
+            END DESC,
+            city_name;
+    """
+
+    with get_connection() as conn:
+        return pd.read_sql(query, conn)
+
+
 st.set_page_config(
     page_title="Live Air Quality & Weather Risk Platform",
     layout="wide",
@@ -174,6 +207,7 @@ hourly_df = load_hourly_risk()
 forecast_df = load_forecast()
 anomaly_df = load_anomalies()
 dq_df = load_data_quality()
+alerts_df = load_weather_alerts()
 
 if latest_df.empty:
     st.error("No latest risk data found. Run dbt models first.")
@@ -193,6 +227,9 @@ if not dq_df.empty:
     dq_df["earliest_observation_time"] = pd.to_datetime(dq_df["earliest_observation_time"])
     dq_df["latest_observation_time"] = pd.to_datetime(dq_df["latest_observation_time"])
     dq_df["latest_ingested_at"] = pd.to_datetime(dq_df["latest_ingested_at"])
+
+if not alerts_df.empty:
+    alerts_df["latest_alert_expires_at"] = pd.to_datetime(alerts_df["latest_alert_expires_at"])
 
 col1, col2, col3, col4 = st.columns(4)
 
@@ -325,6 +362,43 @@ with tab_overview:
 
     st.plotly_chart(fig_risk, use_container_width=True)
 
+    st.subheader("NOAA/NWS Weather Alerts")
+
+    if alerts_df.empty:
+        st.info("No NOAA/NWS weather alert data available yet.")
+    else:
+        active_alerts = int(alerts_df["active_alert_count"].sum())
+        cities_with_alerts = int(alerts_df["has_active_alert"].sum())
+
+        col_alert_1, col_alert_2 = st.columns(2)
+        col_alert_1.metric("Active Weather Alerts", active_alerts)
+        col_alert_2.metric("Cities With Active Alerts", cities_with_alerts)
+
+        active_alerts_df = alerts_df[alerts_df["has_active_alert"] == True].copy()
+
+        if active_alerts_df.empty:
+            st.success("No active NOAA/NWS weather alerts for tracked US cities.")
+        else:
+            active_alerts_df["latest_alert_expires_at"] = to_mountain_time(
+                active_alerts_df["latest_alert_expires_at"]
+            )
+
+            st.dataframe(
+                active_alerts_df[
+                    [
+                        "city_name",
+                        "state_region",
+                        "active_alert_count",
+                        "highest_alert_severity",
+                        "latest_alert_event",
+                        "latest_alert_headline",
+                        "latest_alert_expires_at",
+                    ]
+                ],
+                use_container_width=True,
+                hide_index=True,
+            )
+
 with tab_city:
     st.subheader("City Explorer")
 
@@ -334,6 +408,42 @@ with tab_city:
     )
 
     city_df = hourly_df[hourly_df["city_name"] == city].copy()
+
+    st.subheader("Weather Alert Context")
+
+    if alerts_df.empty:
+        st.info("No NOAA/NWS weather alert data available yet.")
+    else:
+        city_alert_df = alerts_df[alerts_df["city_name"] == city].copy()
+
+        if city_alert_df.empty:
+            st.info("No NOAA/NWS alert record found for this city.")
+        else:
+            city_alert = city_alert_df.iloc[0]
+
+            col_city_alert_1, col_city_alert_2 = st.columns(2)
+            col_city_alert_1.metric("Active Alerts", int(city_alert["active_alert_count"]))
+            col_city_alert_2.metric("Highest Severity", city_alert["highest_alert_severity"])
+
+            if bool(city_alert["has_active_alert"]):
+                expires_value = city_alert["latest_alert_expires_at"]
+
+                if pd.notna(expires_value):
+                    expires_display = (
+                        pd.to_datetime(expires_value, utc=True)
+                        .tz_convert("America/Denver")
+                        .strftime("%Y-%m-%d %H:%M MT")
+                    )
+                else:
+                    expires_display = "Not provided"
+
+                st.warning(
+                    f"{city_alert['latest_alert_event']}: "
+                    f"{city_alert['latest_alert_headline']} "
+                    f"(expires {expires_display})"
+                )
+            else:
+                st.success("No active NOAA/NWS weather alerts for this city.")
 
     fig_aqi = px.line(
         city_df,
@@ -501,101 +611,3 @@ with tab_quality:
 st.caption(
     "Risk score is an analytical indicator, not official health or medical guidance."
 )
-
-
-# -----------------------------
-# NOAA Weather Alerts Section
-# -----------------------------
-
-import os as _os
-import pandas as _pd
-import psycopg2 as _psycopg2
-import streamlit as _st
-
-
-def _get_alert_database_url():
-    try:
-        return _st.secrets["DATABASE_URL"]
-    except Exception:
-        return _os.getenv("DATABASE_URL")
-
-
-def _load_weather_alerts():
-    database_url = _get_alert_database_url()
-
-    if not database_url:
-        return _pd.DataFrame()
-
-    query = """
-        SELECT
-            city_name,
-            state_region,
-            country,
-            active_alert_count,
-            highest_alert_severity,
-            latest_alert_event,
-            latest_alert_headline,
-            latest_alert_urgency,
-            latest_alert_certainty,
-            latest_alert_expires_at,
-            has_active_alert
-        FROM analytics.mart_city_weather_alerts
-        ORDER BY
-            active_alert_count DESC,
-            CASE highest_alert_severity
-                WHEN 'Extreme' THEN 5
-                WHEN 'Severe' THEN 4
-                WHEN 'Moderate' THEN 3
-                WHEN 'Minor' THEN 2
-                WHEN 'Unknown' THEN 1
-                ELSE 0
-            END DESC,
-            city_name;
-    """
-
-    with _psycopg2.connect(database_url) as conn:
-        return _pd.read_sql(query, conn)
-
-
-_st.divider()
-_st.subheader("NOAA/NWS Weather Alerts")
-
-try:
-    alerts_df = _load_weather_alerts()
-
-    if alerts_df.empty:
-        _st.info("No NOAA/NWS weather alert data is available yet.")
-    else:
-        active_alerts = int(alerts_df["active_alert_count"].sum())
-        cities_with_alerts = int(alerts_df["has_active_alert"].sum())
-
-        col1, col2 = _st.columns(2)
-        col1.metric("Active Weather Alerts", active_alerts)
-        col2.metric("Cities With Alerts", cities_with_alerts)
-
-        active_df = alerts_df[alerts_df["has_active_alert"] == True]
-
-        if active_df.empty:
-            _st.success("No active NOAA/NWS weather alerts for tracked US cities.")
-        else:
-            _st.dataframe(
-                active_df[
-                    [
-                        "city_name",
-                        "state_region",
-                        "active_alert_count",
-                        "highest_alert_severity",
-                        "latest_alert_event",
-                        "latest_alert_headline",
-                        "latest_alert_expires_at",
-                    ]
-                ],
-                use_container_width=True,
-                hide_index=True,
-            )
-
-        with _st.expander("All tracked cities"):
-            _st.dataframe(alerts_df, use_container_width=True, hide_index=True)
-
-except Exception as error:
-    _st.warning(f"Could not load NOAA/NWS weather alerts: {error}")
