@@ -135,3 +135,79 @@ Power BI, Tableau, or Looker can connect directly to the BI-ready marts:
 - analytics.mart_bi_hourly_city_trends
 
 These tables are designed for city ranking, AQI trend analysis, pollutant comparison, weather context, and risk segmentation.
+
+## What This Project Demonstrates
+
+This project is a live environmental risk analytics platform built around a production-style data workflow:
+
+- Scheduled API ingestion from live weather, air-quality, and NOAA/NWS alert sources
+- Raw API response storage for lineage and debugging
+- Normalized raw tables for queryable hourly observations
+- dbt staging and mart models for analytics-ready outputs
+- City-level risk scoring, anomaly detection, and AQI forecast baselines
+- Data quality and freshness monitoring
+- Deployed Streamlit dashboard connected to modeled PostgreSQL tables
+- BI-ready marts that can also support Power BI, Tableau, or Looker
+
+## Metric and Semantic Layer
+
+The modeled analytics layer is designed around reusable city-level metrics rather than one-off dashboard calculations.
+
+Core metrics include:
+
+| Metric | Definition | Source Model |
+|---|---|---|
+| Latest AQI | Most recent available US AQI value for each city | `mart_latest_city_risk` |
+| Risk Score | Composite 0-100 environmental risk indicator using AQI and weather modifiers | `mart_city_hourly_risk` |
+| Risk Category | Human-readable risk band derived from the risk score | `mart_city_hourly_risk` |
+| AQI Anomaly Flag | Identifies unusual AQI spikes compared with recent rolling patterns | `mart_aqi_anomalies` |
+| Forecast AQI | Short-term AQI baseline forecast for monitored cities | `mart_aqi_forecast_baseline` |
+| Data Freshness | Measures whether city-level data has updated recently | `mart_data_quality_summary` |
+| Active Weather Alerts | Count of currently active NOAA/NWS alerts by city | `mart_city_weather_alerts` |
+| Highest Alert Severity | Highest active NOAA/NWS alert severity for each city | `mart_city_weather_alerts` |
+
+## Architecture
+
+```text
+Open-Meteo Weather API
+Open-Meteo Air Quality API
+NOAA/NWS Weather Alerts API
+        |
+        v
+Python ingestion layer
+        |
+        v
+Neon PostgreSQL
+- raw schema
+- analytics schema
+        |
+        v
+dbt Core
+- staging views
+- analytics marts
+- BI-ready marts
+- data quality models
+        |
+        v
+Streamlit dashboard
+        |
+        v
+Optional BI layer
+- Power BI
+- Tableau
+- Looker
+```
+
+## Phase 2: NOAA/NWS Weather Alert Enrichment
+
+The platform now enriches city-level environmental risk monitoring with active NOAA/NWS weather alerts for US cities.
+
+The alert pipeline:
+
+- Pulls active weather alerts from the NOAA/NWS API
+- Filters ingestion to tracked US cities
+- Stores alert details in PostgreSQL
+- Models city-level alert summaries in dbt
+- Surfaces alert counts, severity, and latest alert details in Streamlit
+
+This adds a real weather-risk dimension beyond AQI and pollutant monitoring.
