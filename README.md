@@ -211,3 +211,7 @@ The alert pipeline:
 - Surfaces alert counts, severity, and latest alert details in Streamlit
 
 This adds a real weather-risk dimension beyond AQI and pollutant monitoring.
+
+## Architecture Diagram
+
+The project architecture is documented in [`docs/architecture.md`](docs/architecture.md).
