@@ -12,3 +12,8 @@ dbt/air_risk/logs/
 dbt/air_risk/target/
 dbt/air_risk/profiles.yml
 .streamlit/secrets.toml
+
+# Local project notes
+live_air_risk_platform_continuation_summary.md
+live_air_risk_platform_continuation_summary.mdv
+*.bak
