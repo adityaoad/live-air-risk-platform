@@ -33,6 +33,69 @@ def to_mountain_time(series):
         .dt.strftime("%Y-%m-%d %H:%M MT")
     )
 
+DISPLAY_LABELS = {
+    "city_name": "City",
+    "state_region": "State/Region",
+    "country": "Country",
+    "observation_time": "Observation Time",
+    "us_aqi": "US AQI",
+    "aqi_category": "AQI Category",
+    "environmental_risk_score": "Environmental Risk Score",
+    "risk_label": "Risk Level",
+    "pm2_5": "PM2.5",
+    "pm10": "PM10",
+    "ozone": "Ozone",
+    "apparent_temperature_c": "Apparent Temperature (°C)",
+    "apparent_temperature_f": "Apparent Temperature (°F)",
+    "wind_speed_10m": "Wind Speed at 10m",
+    "uv_index": "UV Index",
+    "latest_ingested_at": "Latest Ingested At",
+    "rolling_avg_aqi_24h": "24-Hour Rolling Avg AQI",
+    "rolling_std_aqi_24h": "24-Hour Rolling Std AQI",
+    "aqi_z_score": "AQI Z-Score",
+    "is_aqi_anomaly": "AQI Anomaly",
+    "forecast_aqi_baseline": "Forecast AQI Baseline",
+    "forecast_absolute_error": "Forecast Absolute Error",
+    "forecast_aqi_category": "Forecast AQI Category",
+    "table_name": "Table",
+    "row_count": "Row Count",
+    "earliest_observation_time": "Earliest Observation Time",
+    "latest_observation_time": "Latest Observation Time",
+    "missing_observation_time_count": "Missing Observation Time Count",
+    "active_alert_count": "Active Alert Count",
+    "highest_alert_severity": "Highest Alert Severity",
+    "latest_alert_event": "Latest Alert Event",
+    "latest_alert_headline": "Latest Alert Headline",
+    "latest_alert_urgency": "Latest Alert Urgency",
+    "latest_alert_certainty": "Latest Alert Certainty",
+    "latest_alert_expires_at": "Latest Alert Expires At",
+    "has_active_alert": "Has Active Alert",
+}
+
+
+def format_display_df(df):
+    return df.rename(columns=DISPLAY_LABELS)
+
+
+def clean_table_name(value):
+    if pd.isna(value):
+        return value
+
+    return str(value).replace("_", " ").replace(".", " / ").title()
+
+
+def clean_plotly_legend(fig):
+    for trace in fig.data:
+        if hasattr(trace, "name") and trace.name in DISPLAY_LABELS:
+            trace.name = DISPLAY_LABELS[trace.name]
+            trace.legendgroup = DISPLAY_LABELS[trace.legendgroup] if trace.legendgroup in DISPLAY_LABELS else trace.legendgroup
+
+        if hasattr(trace, "hovertemplate") and trace.hovertemplate:
+            for raw_name, display_name in DISPLAY_LABELS.items():
+                trace.hovertemplate = trace.hovertemplate.replace(raw_name, display_name)
+
+    return fig
+
 
 @st.cache_data(ttl=300)
 def load_latest_risk():
@@ -200,7 +263,7 @@ st.set_page_config(
 )
 
 st.title("Live Air Quality & Weather Risk Platform")
-st.caption("MVP dashboard using live Open-Meteo weather and air-quality data.")
+st.caption("Live city-level environmental risk monitoring using weather, air-quality, and NOAA/NWS alert data.")
 
 latest_df = load_latest_risk()
 hourly_df = load_hourly_risk()
@@ -244,7 +307,7 @@ latest_refresh_mt = (
 
 col4.metric("Latest Refresh", latest_refresh_mt)
 
-tab_overview, tab_city, tab_anomalies, tab_forecast, tab_quality = st.tabs(["Overview", "City Explorer", "Anomalies", "Forecast", "Data Quality"])
+tab_overview, tab_city, tab_anomalies, tab_forecast, tab_quality, tab_definitions = st.tabs(["Overview", "City Explorer", "Anomalies", "Forecast", "Data Quality", "Definitions"])
 
 with tab_overview:
     st.subheader("Latest City Risk Ranking")
@@ -269,15 +332,8 @@ with tab_overview:
 
     ranking_df = latest_df[ranking_cols].copy()
     ranking_df["observation_time"] = to_mountain_time(ranking_df["observation_time"])
-    ranking_df = ranking_df.rename(
-        columns={
-            "apparent_temperature_c": "Apparent Temperature (°C)",
-            "apparent_temperature_f": "Apparent Temperature (°F)",
-        }
-    )
-
     st.dataframe(
-        ranking_df,
+        format_display_df(ranking_df),
         use_container_width=True,
         hide_index=True,
     )
@@ -329,7 +385,8 @@ with tab_overview:
             "pm2_5": ":.1f",
             "ozone": ":.1f",
         },
-        title="Latest Environmental Risk Score",
+        labels=DISPLAY_LABELS,
+        title="Latest Environmental Risk Score by City",
     )
 
     fig_risk.add_hline(
@@ -384,17 +441,19 @@ with tab_overview:
             )
 
             st.dataframe(
-                active_alerts_df[
-                    [
-                        "city_name",
-                        "state_region",
-                        "active_alert_count",
-                        "highest_alert_severity",
-                        "latest_alert_event",
-                        "latest_alert_headline",
-                        "latest_alert_expires_at",
+                format_display_df(
+                    active_alerts_df[
+                        [
+                            "city_name",
+                            "state_region",
+                            "active_alert_count",
+                            "highest_alert_severity",
+                            "latest_alert_event",
+                            "latest_alert_headline",
+                            "latest_alert_expires_at",
+                        ]
                     ]
-                ],
+                ),
                 use_container_width=True,
                 hide_index=True,
             )
@@ -449,29 +508,34 @@ with tab_city:
         city_df,
         x="observation_time",
         y="us_aqi",
-        title=f"{city} AQI Trend",
+        labels=DISPLAY_LABELS,
+        title=f"{city} US AQI Trend",
         markers=True,
     )
 
+    fig_aqi = clean_plotly_legend(fig_aqi)
     st.plotly_chart(fig_aqi, use_container_width=True)
 
     fig_pollutants = px.line(
         city_df,
         x="observation_time",
         y=["pm2_5", "pm10", "ozone"],
+        labels=DISPLAY_LABELS,
         title=f"{city} Pollutant Trends",
     )
 
+    fig_pollutants = clean_plotly_legend(fig_pollutants)
     st.plotly_chart(fig_pollutants, use_container_width=True)
 
     fig_weather = px.line(
         city_df,
         x="observation_time",
-        y=["apparent_temperature_c",
-        "apparent_temperature_f", "wind_speed_10m", "uv_index"],
-        title=f"{city} Weather Context: Apparent Temperature (°C/°F), Wind, UV",
+        y=["apparent_temperature_f", "wind_speed_10m", "uv_index"],
+        labels=DISPLAY_LABELS,
+        title=f"{city} Weather Context: Apparent Temperature, Wind, and UV",
     )
 
+    fig_weather = clean_plotly_legend(fig_weather)
     st.plotly_chart(fig_weather, use_container_width=True)
 
 
@@ -493,22 +557,24 @@ with tab_anomalies:
         anomaly_display_df["observation_time"] = to_mountain_time(anomaly_display_df["observation_time"])
 
         st.dataframe(
-            anomaly_display_df[
-                [
-                    "city_name",
-                    "state_region",
-                    "country",
-                    "observation_time",
-                    "us_aqi",
-                    "rolling_avg_aqi_24h",
-                    "aqi_z_score",
-                    "environmental_risk_score",
-                    "risk_label",
-                    "pm2_5",
-                    "pm10",
-                    "ozone",
+            format_display_df(
+                anomaly_display_df[
+                    [
+                        "city_name",
+                        "state_region",
+                        "country",
+                        "observation_time",
+                        "us_aqi",
+                        "rolling_avg_aqi_24h",
+                        "aqi_z_score",
+                        "environmental_risk_score",
+                        "risk_label",
+                        "pm2_5",
+                        "pm10",
+                        "ozone",
+                    ]
                 ]
-            ],
+            ),
             use_container_width=True,
             hide_index=True,
         )
@@ -519,9 +585,11 @@ with tab_anomalies:
             y="us_aqi",
             color="is_aqi_anomaly",
             hover_data=["city_name", "aqi_z_score", "environmental_risk_score"],
+            labels=DISPLAY_LABELS,
             title="AQI Anomaly Detection",
         )
 
+        fig_anomalies = clean_plotly_legend(fig_anomalies)
         st.plotly_chart(fig_anomalies, use_container_width=True)
 
 
@@ -551,30 +619,34 @@ with tab_forecast:
             forecast_city_df,
             x="observation_time",
             y=["us_aqi", "forecast_aqi_baseline"],
+            labels=DISPLAY_LABELS,
             title=f"{forecast_city} AQI: Actual vs Baseline Forecast",
             markers=True,
         )
 
+        fig_forecast = clean_plotly_legend(fig_forecast)
         st.plotly_chart(fig_forecast, use_container_width=True)
 
         forecast_display_df = forecast_city_df.sort_values("observation_time", ascending=False).copy()
         forecast_display_df["observation_time"] = to_mountain_time(forecast_display_df["observation_time"])
 
         st.dataframe(
-            forecast_display_df[
-                [
-                    "city_name",
-                    "state_region",
-                    "country",
-                    "observation_time",
-                    "us_aqi",
-                    "forecast_aqi_baseline",
-                    "forecast_absolute_error",
-                    "forecast_aqi_category",
-                    "environmental_risk_score",
-                    "risk_label",
+            format_display_df(
+                forecast_display_df[
+                    [
+                        "city_name",
+                        "state_region",
+                        "country",
+                        "observation_time",
+                        "us_aqi",
+                        "forecast_aqi_baseline",
+                        "forecast_absolute_error",
+                        "forecast_aqi_category",
+                        "environmental_risk_score",
+                        "risk_label",
+                    ]
                 ]
-            ],
+            ),
             use_container_width=True,
             hide_index=True,
         )
@@ -592,21 +664,127 @@ with tab_quality:
     ]:
         dq_display_df[col] = to_mountain_time(dq_display_df[col])
 
+    if "table_name" in dq_display_df.columns:
+        dq_display_df["table_name"] = dq_display_df["table_name"].apply(clean_table_name)
+
     st.dataframe(
-        dq_display_df,
+        format_display_df(dq_display_df),
         use_container_width=True,
         hide_index=True,
     )
 
     if not dq_df.empty:
+        dq_chart_df = dq_df.copy()
+        dq_chart_df["table_name"] = dq_chart_df["table_name"].apply(clean_table_name)
+
         fig_rows = px.bar(
-            dq_df,
+            dq_chart_df,
             x="table_name",
             y="row_count",
+            labels=DISPLAY_LABELS,
             title="Row Counts by Table",
         )
 
         st.plotly_chart(fig_rows, use_container_width=True)
+
+
+with tab_definitions:
+    st.subheader("Definitions")
+
+    st.markdown(
+        """
+        This page explains the main environmental, weather, alert, and data-quality terms used across the dashboard.
+        """
+    )
+
+    definitions = [
+        {
+            "Term": "US AQI",
+            "Definition": "The United States Air Quality Index. Higher values indicate worse air quality and greater potential health concern.",
+        },
+        {
+            "Term": "AQI Category",
+            "Definition": "A descriptive air-quality band derived from AQI values, such as Good, Moderate, or Unhealthy.",
+        },
+        {
+            "Term": "PM2.5",
+            "Definition": "Fine particulate matter with diameter of 2.5 micrometers or smaller. It is one of the most important pollution indicators because it can penetrate deep into the lungs.",
+        },
+        {
+            "Term": "PM10",
+            "Definition": "Particulate matter with diameter of 10 micrometers or smaller. It includes dust, pollen, smoke, and other coarse particles.",
+        },
+        {
+            "Term": "Ozone",
+            "Definition": "Ground-level ozone concentration. High ozone can affect breathing and is often worse during sunny, hot conditions.",
+        },
+        {
+            "Term": "Apparent Temperature",
+            "Definition": "The temperature humans feel after accounting for weather factors such as humidity and wind. The dashboard displays this in Fahrenheit.",
+        },
+        {
+            "Term": "Wind Speed at 10m",
+            "Definition": "Wind speed measured or modeled at 10 meters above ground level, a standard height used in weather reporting.",
+        },
+        {
+            "Term": "UV Index",
+            "Definition": "A measure of ultraviolet radiation exposure risk from the sun. Higher values indicate stronger UV exposure.",
+        },
+        {
+            "Term": "Environmental Risk Score",
+            "Definition": "A 0-100 analytical score combining AQI and weather-related modifiers. It is designed for comparison across cities and time.",
+        },
+        {
+            "Term": "Risk Level",
+            "Definition": "A readable category derived from the Environmental Risk Score, such as Low, Moderate, High, or Severe.",
+        },
+        {
+            "Term": "AQI Anomaly",
+            "Definition": "A flag showing whether AQI is unusually high compared with recent rolling patterns for that city.",
+        },
+        {
+            "Term": "AQI Z-Score",
+            "Definition": "A standardized measure showing how far the current AQI is from the recent rolling average.",
+        },
+        {
+            "Term": "24-Hour Rolling Avg AQI",
+            "Definition": "The average AQI over the recent 24-hour window, used as a baseline for trend and anomaly detection.",
+        },
+        {
+            "Term": "Forecast AQI Baseline",
+            "Definition": "A simple short-term baseline estimate for AQI. It is not a deep forecasting model.",
+        },
+        {
+            "Term": "Forecast Absolute Error",
+            "Definition": "The absolute difference between the actual AQI and the forecast baseline.",
+        },
+        {
+            "Term": "NOAA/NWS Weather Alert",
+            "Definition": "An active weather alert issued through the National Oceanic and Atmospheric Administration / National Weather Service API.",
+        },
+        {
+            "Term": "Alert Severity",
+            "Definition": "The seriousness level of an active NOAA/NWS alert, such as Minor, Moderate, Severe, or Extreme.",
+        },
+        {
+            "Term": "Alert Urgency",
+            "Definition": "How quickly action may be needed for the alert, based on NOAA/NWS alert metadata.",
+        },
+        {
+            "Term": "Alert Certainty",
+            "Definition": "The confidence level that the alert event will occur, based on NOAA/NWS alert metadata.",
+        },
+        {
+            "Term": "Data Freshness",
+            "Definition": "A measure of how recently the data was ingested or updated in the warehouse.",
+        },
+    ]
+
+    st.dataframe(
+        pd.DataFrame(definitions),
+        use_container_width=True,
+        hide_index=True,
+    )
 
 st.caption(
     "Risk score is an analytical indicator, not official health or medical guidance."
