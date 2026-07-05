@@ -24,14 +24,6 @@ Working:
 - Streamlit dashboard
 - GitHub Actions scheduled ingestion every 3 hours
 
-Not done yet:
-- Streamlit cloud deployment
-- Power BI/Tableau/Looker dashboard connection
-- Anomaly detection
-- Forecasting
-- OpenAQ or NOAA enrichment
-- Final screenshots and project polish
-
 ## Dashboard Screenshots
 
 ### Overview
