@@ -32,6 +32,28 @@ Not done yet:
 - OpenAQ or NOAA enrichment
 - Final screenshots and project polish
 
+## Dashboard Screenshots
+
+### Overview
+
+![Overview](screenshots/overview.png)
+
+### City Explorer
+
+![City Explorer](screenshots/city_explorer.png)
+
+### Anomalies
+
+![Anomalies](screenshots/anomalies.png)
+
+### Forecast
+
+![Forecast](screenshots/forecast.png)
+
+### Data Quality
+
+![Data Quality](screenshots/data_quality.png)
+
 ## Stack
 
 Python 3.12, PostgreSQL/Neon, dbt Core, dbt-postgres, Streamlit, Plotly, pandas, psycopg2, GitHub Actions, Open-Meteo Weather API, Open-Meteo Air Quality API.
